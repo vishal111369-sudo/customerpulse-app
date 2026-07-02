@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CustomerPulse</title>
 <!--
-  CustomerPulse — domain-agnostic customer-intelligence app.
-  One core + a vertical config. Onboarding picks the industry + business name,
-  which relabels the canonical Customer Profile schema across the whole UI and
-  swaps the AI knowledge pack. Ingestion: plugin handoff (?customer=<b64>), CSV,
-  or demo data. (c) 2026 Equibyte Technologies.
+  CustomerPulse — domain-agnostic customer-intelligence app (PlayerPulse model, generalised).
+  One core + a vertical config. Onboarding picks industry + business name, which relabels the
+  canonical Customer Profile schema across the whole UI and swaps the AI knowledge pack.
+  Verticals: B2B SaaS · Retail/E-com · Finance (brokerage/trading CRM) · Sandbox (generic demo).
+  Ingestion: plugin handoff (?customer=<b64>), plus seeded demo data. (c) 2026 Equibyte Technologies.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -21,64 +21,77 @@
   body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:1.5}
   a{color:var(--accent);text-decoration:none}
   .mono{font-family:var(--mono)}
-  /* top nav */
-  .nav{display:flex;align-items:center;justify-content:space-between;padding:12px 22px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .nav{display:flex;align-items:center;justify-content:space-between;padding:12px 22px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:20}
   .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px}
   .brand .dot{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--purple));display:grid;place-items:center}
   .brand small{font-weight:500;color:var(--text2);font-size:12.5px;margin-left:6px}
   .navtabs{display:flex;gap:6px}
   .navtabs .t{padding:7px 15px;border-radius:20px;cursor:pointer;color:var(--text2);font-weight:600;font-size:13.5px}
   .navtabs .t.active{background:var(--surface3);color:var(--text)}
-  .navr{display:flex;align-items:center;gap:14px;color:var(--text2);font-size:13px}
+  .navr{display:flex;align-items:center;gap:12px;color:var(--text2);font-size:13px}
   .navr .chip{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer}
-  .wrap{max-width:1200px;margin:0 auto;padding:22px}
-  /* onboarding */
+  .wrap{max-width:1180px;margin:0 auto;padding:22px}
   .overlay{position:fixed;inset:0;background:rgba(8,10,16,.86);display:grid;place-items:center;z-index:50}
-  .ob{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:34px;width:560px;max-width:92vw}
+  .ob{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:34px;width:600px;max-width:92vw}
   .ob h1{font-size:24px;margin-bottom:6px} .ob p{color:var(--text2);margin-bottom:22px;font-size:14px}
   .ob label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin:16px 0 8px}
-  .verticals{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .vopt{border:1px solid var(--border2);border-radius:10px;padding:14px;cursor:pointer;text-align:center;transition:.15s}
-  .vopt .ic{font-size:22px} .vopt .nm{font-weight:700;margin-top:6px;font-size:14px} .vopt .ds{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .verticals{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .vopt{border:1px solid var(--border2);border-radius:10px;padding:14px;cursor:pointer;display:flex;gap:12px;align-items:center;transition:.15s}
+  .vopt .ic{font-size:22px} .vopt .nm{font-weight:700;font-size:14px} .vopt .ds{font-size:11.5px;color:var(--muted)}
   .vopt.sel{border-color:var(--accent);background:var(--surface3)}
   .ob input{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:12px 14px;color:var(--text);font-size:15px}
   .ob .go{margin-top:24px;width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:13px;font-weight:700;font-size:15px;cursor:pointer}
   .ob .go:disabled{opacity:.4;cursor:not-allowed}
-  /* cards & grid */
   .section-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:18px}
   .row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
   h2{font-size:18px} .sub{color:var(--text2);font-size:13px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:16px}
+  .search{background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:9px 13px;color:var(--text);font-size:14px;width:260px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-top:16px}
   .ccard{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:15px;cursor:pointer;transition:.15s}
   .ccard:hover{border-color:var(--accent)}
   .ccard .cn{font-weight:700;font-size:15px} .ccard .ci{font-size:12px;color:var(--muted);font-family:var(--mono)}
   .ccard .cm{margin-top:10px;font-size:22px;font-weight:800;font-family:var(--mono)}
   .ccard .cl{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2)}
   .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-  .tag{font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px}
+  .tag{font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;cursor:default}
+  .tag.click{cursor:pointer}
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
   .kpi{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px}
   .kpi .l{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2)}
-  .kpi .v{font-size:21px;font-weight:800;margin-top:5px;font-family:var(--mono)}
-  .kvcols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .kpi .v{font-size:20px;font-weight:800;margin-top:5px;font-family:var(--mono)}
+  .ptabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:4px 0 16px;flex-wrap:wrap}
+  .ptabs .pt{padding:9px 14px;cursor:pointer;font-weight:600;font-size:13.5px;color:var(--text2);border-bottom:2px solid transparent}
+  .ptabs .pt.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .kvcols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
   .kv{width:100%;border-collapse:collapse}
   .kv th{text-align:left;padding:8px 0;color:var(--text2);font-weight:500;font-size:13.5px;border-bottom:1px solid var(--border)}
   .kv td{text-align:right;padding:8px 0;font-weight:600;font-family:var(--mono);font-size:13.5px;border-bottom:1px solid var(--border)}
-  table.tx{width:100%;border-collapse:collapse;margin-top:8px}
+  table.tx{width:100%;border-collapse:collapse;margin-top:4px}
   table.tx th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);padding:8px;border-bottom:1px solid var(--border)}
   table.tx td{padding:8px;border-bottom:1px solid var(--border);font-size:13px;font-family:var(--mono)}
   .btn{background:var(--surface3);border:1px solid var(--border2);color:var(--text);border-radius:9px;padding:9px 15px;font-weight:600;cursor:pointer;font-size:13.5px}
   .btn.p{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.sm{padding:6px 11px;font-size:12.5px}
   .pill{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px}
   .pill.high{background:rgba(232,48,74,.15);color:var(--red)} .pill.mid{background:rgba(255,215,64,.15);color:var(--gold)} .pill.low{background:rgba(0,192,118,.15);color:var(--green)}
-  .ai{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:8px;white-space:pre-wrap;font-size:14px;line-height:1.65;color:var(--text)}
+  .ai{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:8px;white-space:pre-wrap;font-size:14px;line-height:1.65}
+  .chartwrap{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:8px}
+  .chartbox{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px}
+  .chartbox .ct{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+  canvas{width:100%;display:block}
+  .actlog .item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .actlog .item .ty{font-weight:700;min-width:110px}
+  .actlog .item .nt{color:var(--text2);flex:1}
+  .actlog .item .dt{color:var(--muted);font-size:12px;font-family:var(--mono)}
+  select,textarea{background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:9px;padding:9px 11px;font-size:13.5px;font-family:var(--font)}
+  textarea{width:100%;min-height:120px;resize:vertical}
   .empty{text-align:center;color:var(--muted);padding:40px}
   .modal-bg{position:fixed;inset:0;background:rgba(8,10,16,.7);display:none;place-items:center;z-index:60}
   .modal-bg.show{display:grid}
   .modal{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:26px;width:440px;max-width:92vw}
   .modal label{display:block;font-size:12px;color:var(--text2);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.5px}
   .modal input{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:11px;color:var(--text);font-size:14px}
-  .back{color:var(--text2);cursor:pointer;font-size:13px;margin-bottom:12px;display:inline-block}
+  .back{color:var(--text2);cursor:pointer;font-size:13px;margin-bottom:10px;display:inline-block}
 </style>
 </head>
 <body>
@@ -100,7 +113,7 @@
 <div class="modal-bg" id="settingsModal">
   <div class="modal">
     <h2>Settings</h2>
-    <label>Your name (CSM / analyst)</label>
+    <label>Your name (analyst / manager)</label>
     <input id="setCsm" placeholder="e.g. Priya N.">
     <label>Gemini API key (stored only in this browser)</label>
     <input id="setKey" type="password" placeholder="AI…">
@@ -124,20 +137,11 @@ const VERTICALS = {
       sessions_30d:"Logins (30d)", units_used:"Active Seats", renewal_date:"Renewal Date",
       risk_level:"Churn Risk", health_score:"Health Score", segment:"Segment", nps:"NPS" },
     kpis:["net_value","recurring_value","health_score","renewal_date"],
+    seriesLabel:{net:"Net revenue trajectory", spend:"Monthly invoices"},
+    actions:["Call","Email","QBR","Renewal outreach","Expansion offer","Escalate","Note"],
     tagColors:{Champion:"#00c076",Expansion:"#4f8dff","At-Risk":"#e8304a","Renewal Due":"#ffd740",Onboarding:"#b47fff",Steady:"#8fa8cc",Watch:"#00e5ff"},
     kb:{ role:"You are a senior B2B SaaS Customer Success analyst.",
-      guidance:"Classify the account (Champion / Expansion-ready / Steady / At-Risk / Churn-Risk / Onboarding). Flag churn signals: declining logins, low seat adoption vs purchased, rising/unresolved tickets, failed or late payments, sponsor departure, renewal approaching. Two+ co-occurring = material churn risk → recommend a save play, not an upsell. NRR>100% = healthy expansion. Seat utilisation is the strongest adoption signal." } },
-  "igaming": {
-    label:"iGaming", icon:"🎰", desc:"Player / VIP", placeholder:"e.g. BetAndPlay",
-    entity:"Player", entities:"Players", owner:"VIP Manager", currency:"EUR",
-    labels:{ recurring_value:"Monthly Deposits", primary_spend:"Total Deposits", pending:"Pending Cashouts",
-      refunds:"Chargebacks", promo_value:"Bonuses", net_value:"GGR", avg_unit:"Avg Bet",
-      sessions_30d:"Sessions (30d)", units_used:"Active Days", renewal_date:"Next Review",
-      risk_level:"Risk Level", health_score:"Value Score", segment:"Segment", nps:"Sentiment" },
-    kpis:["net_value","primary_spend","health_score","risk_level"],
-    tagColors:{VIP:"#ffd740","Bonus Hunter":"#e8304a","High Roller":"#00c076",Chaser:"#ff8fa3","At Risk":"#4f8dff",Watch:"#ffb347","Re-activation":"#00e5ff","New Player":"#b47fff"},
-    kb:{ role:"You are a senior iGaming VIP / player-value analyst with responsible-gambling awareness.",
-      guidance:"Assess playing style, value tier, and mood. Flag: bonus abuse (bonus ratio high, no net deposits), chasing losses (rapid stake escalation after losses), RG risk (long sessions, deposit velocity, loss chasing). High GGR + healthy pattern = nurture VIP. Recommend an action: VIP outreach, bonus offer/deny, RG check-in, or re-activation. Never encourage increased play for at-risk patterns." } },
+      guidance:"Classify the account (Champion / Expansion-ready / Steady / At-Risk / Churn-Risk / Onboarding). Flag churn signals: declining logins, low seat adoption vs purchased, rising/unresolved tickets, failed or late payments, sponsor departure, renewal approaching. Two+ co-occurring = material churn risk → recommend a save play, not an upsell. Seat utilisation is the strongest adoption signal." } },
   "retail": {
     label:"Retail / E-com", icon:"🛍", desc:"Shopper CRM", placeholder:"e.g. Harbor Goods",
     entity:"Customer", entities:"Customers", owner:"Account Manager", currency:"USD",
@@ -146,39 +150,65 @@ const VERTICALS = {
       sessions_30d:"Visits (30d)", units_used:"Orders (90d)", renewal_date:"Next Best Contact",
       risk_level:"Churn Risk", health_score:"Loyalty Score", segment:"Segment", nps:"NPS" },
     kpis:["primary_spend","recurring_value","health_score","risk_level"],
+    seriesLabel:{net:"Spend trajectory", spend:"Order value"},
+    actions:["Call","Email","SMS","Win-back offer","Loyalty upgrade","Replenishment nudge","Note"],
     tagColors:{VIP:"#ffd740",Loyal:"#00c076","At-Risk":"#e8304a","Win-back":"#00e5ff",New:"#b47fff","Discount-led":"#ff8fa3",Watch:"#ffb347"},
     kb:{ role:"You are a senior retail / e-commerce CRM and lifecycle analyst.",
-      guidance:"Segment by RFM (recency, frequency, monetary). Flag: lapsing (no recent orders vs cadence), discount-dependence (high promo share of spend), high return rate eroding net revenue. High LTV + recent + frequent = VIP nurture. Recommend: win-back offer, loyalty upgrade, replenishment nudge, or VIP treatment." } }
+      guidance:"Segment by RFM (recency, frequency, monetary). Flag: lapsing (no recent orders vs cadence), discount-dependence (high promo share of spend), high return rate eroding net revenue. High LTV + recent + frequent = VIP nurture. Recommend: win-back offer, loyalty upgrade, replenishment nudge, or VIP treatment." } },
+  "finance": {
+    label:"Finance / Trading", icon:"📈", desc:"Brokerage CRM", placeholder:"e.g. Meridian Markets",
+    entity:"Client", entities:"Clients", owner:"Relationship Manager", currency:"USD",
+    labels:{ recurring_value:"Avg Monthly Volume", primary_spend:"Assets Under Management", pending:"Pending Withdrawals",
+      refunds:"Fee Reversals", promo_value:"Credits / Rebates", net_value:"Commission Revenue", avg_unit:"Avg Trade Size",
+      sessions_30d:"Trades (30d)", units_used:"Open Positions", renewal_date:"Next Review",
+      risk_level:"Attrition Risk", health_score:"Engagement Score", segment:"Tier", nps:"NPS" },
+    kpis:["primary_spend","net_value","health_score","risk_level"],
+    seriesLabel:{net:"Commission revenue trajectory", spend:"Trading volume"},
+    actions:["Call","Email","Portfolio review","Re-activation","Fee review","Retention offer","Note"],
+    tagColors:{HNW:"#ffd740","Active Trader":"#00c076",Dormant:"#e8304a","At-Risk":"#4f8dff",New:"#b47fff",Margin:"#ff8fa3",Watch:"#00e5ff"},
+    kb:{ role:"You are a senior brokerage / trading-platform CRM analyst focused on client relationship health.",
+      guidance:"Assess engagement and attrition risk from behaviour: declining trade frequency, net withdrawals, dormancy, falling AUM, or margin/leverage exposure. HNW + active = retain/nurture. IMPORTANT: this is relationship-health analysis, NOT investment advice — never recommend buying/selling securities or predict markets. Recommend a relationship action only: RM outreach, re-activation campaign, fee review, or retention offer." } },
+  "sandbox": {
+    label:"Sandbox", icon:"🧪", desc:"Generic demo workspace", placeholder:"e.g. Demo Co",
+    entity:"Customer", entities:"Customers", owner:"Owner", currency:"USD",
+    labels:{ recurring_value:"Monthly Revenue", primary_spend:"Lifetime Value", pending:"Outstanding",
+      refunds:"Refunds", promo_value:"Credits", net_value:"Net Revenue", avg_unit:"Avg Order",
+      sessions_30d:"Sessions (30d)", units_used:"Active Units", renewal_date:"Next Contact",
+      risk_level:"Risk", health_score:"Health Score", segment:"Segment", nps:"NPS" },
+    kpis:["net_value","primary_spend","health_score","risk_level"],
+    seriesLabel:{net:"Revenue trajectory", spend:"Activity"},
+    actions:["Call","Email","Follow-up","Offer","Escalate","Note"],
+    tagColors:{VIP:"#ffd740",Loyal:"#00c076","At-Risk":"#e8304a",New:"#b47fff",Watch:"#00e5ff"},
+    kb:{ role:"You are a senior customer-intelligence analyst.",
+      guidance:"Read the customer's value, engagement and risk signals holistically. Name the archetype (VIP / Loyal / Steady / At-Risk / New). Flag declining engagement, rising refunds, or outstanding balance. Recommend one concrete next action." } }
 };
-
-/* ============ CANONICAL FIELD GROUPS ============ */
 const MONEY_KEYS=["recurring_value","primary_spend","net_value","avg_unit","promo_value","refunds","pending"];
 const ACTIVITY_KEYS=["sessions_30d","units_used","renewal_date"];
 const RISK_KEYS=["health_score","risk_level","segment","nps"];
 
 /* ============ STATE ============ */
-const SB_URL="https://sufuqnqmcvdrxnbfmpwh.supabase.co";
-const SB_ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1ZnVxbnFtY3ZkcnhuYmZtcHdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODYyNDcsImV4cCI6MjA5Njc2MjI0N30.QcCeSrYA0AD8tSslC3XjiLfRp-dkr_-DSBsDArTAz4E";
-let SETUP=JSON.parse(localStorage.getItem("cp_setup")||"null"); // {vertical, business}
+let SETUP=JSON.parse(localStorage.getItem("cp_setup")||"null");
 let CSM=localStorage.getItem("cp_csm")||"";
 let GKEY=localStorage.getItem("cp_gemini_key")||"";
-let CUSTOMERS=[];        // canonical customer objects
-let CURRENT=null;
-let obSel=null;
-
+let CUSTOMERS=[], CURRENT=null, obSel=null, PTAB="Overview", QUERY="";
 const $=s=>document.querySelector(s);
 function V(){ return VERTICALS[SETUP.vertical]; }
 function label(k){ return V().labels[k]||k; }
-function fmtMoney(v){ return v==null?"—":String(v); }
+
+/* seeded RNG + daily series for charts */
+function seeded(s){ return ()=>{ s=(s*1103515245+12345)&0x7fffffff; return s/0x7fffffff; }; }
+function genDaily(seed,trend){ const r=seeded(seed); let net=0; const out=[];
+  for(let i=0;i<30;i++){ const base=trend*45+(r()-0.45)*260; net+=base;
+    out.push({d:i,spend:Math.max(20,Math.round(160+(r()-0.3)*380)),net:Math.round(net)}); } return out; }
 
 /* ============ ONBOARDING ============ */
 function renderOnboarding(){
   const opts=Object.entries(VERTICALS).map(([id,v])=>
     `<div class="vopt" data-id="${id}" onclick="selVertical('${id}')">
-      <div class="ic">${v.icon}</div><div class="nm">${v.label}</div><div class="ds">${v.desc}</div></div>`).join("");
+      <div class="ic">${v.icon}</div><div><div class="nm">${v.label}</div><div class="ds">${v.desc}</div></div></div>`).join("");
   $("#onboarding").innerHTML=`<div class="overlay"><div class="ob">
     <h1>Welcome to CustomerPulse</h1>
-    <p>One customer-intelligence core, tuned to your world. Pick your industry and name your business — every label, metric and the AI brain adapt to match.</p>
+    <p>One customer-intelligence core, tuned to your world. Pick your industry and name your business — every label, metric, chart and the AI brain adapt to match. Your workspace opens pre-seeded with sample ${""}data you can explore right away.</p>
     <label>Industry</label><div class="verticals">${opts}</div>
     <label>Business name</label><input id="obBiz" placeholder="Your business" oninput="obCheck()">
     <button class="go" id="obGo" disabled onclick="finishOnboarding()">Launch workspace →</button>
@@ -188,117 +218,170 @@ function renderOnboarding(){
 function selVertical(id){ obSel=id; document.querySelectorAll(".vopt").forEach(e=>e.classList.toggle("sel",e.dataset.id===id));
   const b=$("#obBiz"); if(!b.value) b.placeholder=VERTICALS[id].placeholder; obCheck(); }
 function obCheck(){ $("#obGo").disabled=!(obSel && $("#obBiz").value.trim()); }
-function finishOnboarding(){
-  SETUP={vertical:obSel,business:$("#obBiz").value.trim()};
-  localStorage.setItem("cp_setup",JSON.stringify(SETUP));
-  $("#onboarding").style.display="none";
-  boot();
-}
+function finishOnboarding(){ SETUP={vertical:obSel,business:$("#obBiz").value.trim()};
+  localStorage.setItem("cp_setup",JSON.stringify(SETUP)); $("#onboarding").style.display="none"; boot(); }
 function reOnboard(){ closeSettings(); obSel=null; renderOnboarding(); }
 
 /* ============ INGESTION ============ */
-function loadFromParam(){
-  const p=new URLSearchParams(location.search).get("customer");
-  if(!p) return null;
-  try{ const d=JSON.parse(decodeURIComponent(escape(atob(p)))); return normalize(d); }catch(e){ return null; }
-}
-// accept either canonical {entity,money,activity,risk,tags,transactions} or flat
-function normalize(d){
-  if(d.entity||d.money) return {
-    entity:d.entity||{}, money:d.money||{}, activity:d.activity||{}, risk:d.risk||{},
-    tags:d.tags||[], transactions:d.transactions||[] };
-  return d;
-}
+function loadFromParam(){ const p=new URLSearchParams(location.search).get("customer"); if(!p) return null;
+  try{ return normalize(JSON.parse(decodeURIComponent(escape(atob(p))))); }catch(e){ return null; } }
+function normalize(d){ const c=(d.entity||d.money)?{entity:d.entity||{},money:d.money||{},activity:d.activity||{},risk:d.risk||{},tags:d.tags||[],transactions:d.transactions||[]}:d;
+  c.daily=c.daily||genDaily(7,0); c.actions=c.actions||[]; c.note=c.note||""; return c; }
+
+/* ============ DEMO DATA (seeded per vertical) ============ */
+function C(name,id,money,act,riskO,tags,tx,seed,trend,note){
+  return {entity:{name,entity_id:id,owner:CSM||V().owner}, money, activity:act, risk:riskO, tags,
+    transactions:tx, daily:genDaily(seed,trend), actions:[], note}; }
 function demoData(){
   const v=SETUP.vertical;
-  const mk=(name,id,money,act,risk,tags,tx)=>({entity:{name,entity_id:id,owner:CSM||V().owner},money,activity:act,risk,tags,transactions:tx});
   if(v==="b2b-saas") return [
-    mk("Northwind Software","ACC-3001",{recurring_value:"$96,000",primary_spend:"$310,000",net_value:"$94,200",avg_unit:"$32,000",promo_value:"$1,200",refunds:"$1,800",pending:"$0"},{sessions_30d:"180",units_used:"140 / 160",renewal_date:"2026-10-31"},{health_score:"84 / 100",risk_level:"Low",segment:"Enterprise",nps:"9"},["Champion","Expansion"],[["2026-06-01","$8,000","Subscription","Paid"],["2026-05-01","$8,000","Subscription","Paid"]]),
-    mk("Contoso Retailing","ACC-3002",{recurring_value:"$42,000",primary_spend:"$70,000",net_value:"$38,400",avg_unit:"$21,000",promo_value:"$2,400",refunds:"$3,600",pending:"$3,500"},{sessions_30d:"12",units_used:"9 / 40",renewal_date:"2026-07-20"},{health_score:"41 / 100",risk_level:"High",segment:"Growth",nps:"4"},["At-Risk","Renewal Due"],[["2026-06-01","$3,500","Subscription","Failed"],["2026-05-01","$3,500","Subscription","Paid"]]),
-    mk("Fabrikam Inc","ACC-3003",{recurring_value:"$60,000",primary_spend:"$150,000",net_value:"$59,000",avg_unit:"$30,000",promo_value:"$0",refunds:"$1,000",pending:"$0"},{sessions_30d:"95",units_used:"55 / 70",renewal_date:"2026-12-01"},{health_score:"72 / 100",risk_level:"Medium",segment:"Growth",nps:"6"},["Steady"],[["2026-06-01","$5,000","Subscription","Paid"]]) ];
-  if(v==="igaming") return [
-    mk("Player #10192","PL-10192",{recurring_value:"€4,200",primary_spend:"€38,500",net_value:"€12,300",avg_unit:"€6.40",promo_value:"€2,100",refunds:"€0",pending:"€850"},{sessions_30d:"64",units_used:"22",renewal_date:"2026-07-10"},{health_score:"78 / 100",risk_level:"Medium",segment:"VIP",nps:"Positive"},["VIP","High Roller"],[["2026-06-28","€500","Deposit","Approved"],["2026-06-25","€300","Cashout","Pending"]]),
-    mk("Player #10488","PL-10488",{recurring_value:"€120",primary_spend:"€600",net_value:"-€40",avg_unit:"€1.10",promo_value:"€480",refunds:"€0",pending:"€0"},{sessions_30d:"41",units_used:"12",renewal_date:"2026-07-05"},{health_score:"32 / 100",risk_level:"High",segment:"Growth",nps:"—"},["Bonus Hunter","At Risk"],[["2026-06-27","€20","Deposit","Approved"],["2026-06-27","€480","Bonus","Issued"]]),
-    mk("Player #10560","PL-10560",{recurring_value:"€2,800",primary_spend:"€21,000",net_value:"€7,900",avg_unit:"€4.20",promo_value:"€900",refunds:"€0",pending:"€0"},{sessions_30d:"38",units_used:"18",renewal_date:"2026-08-01"},{health_score:"69 / 100",risk_level:"Medium",segment:"High Roller",nps:"Neutral"},["Chaser","Watch"],[["2026-06-26","€250","Deposit","Approved"]]) ];
-  return [ /* retail */
-    mk("Jordan Ellis","CU-5001",{recurring_value:"$310",primary_spend:"$6,400",net_value:"$5,900",avg_unit:"$92",promo_value:"$180",refunds:"$500",pending:"$0"},{sessions_30d:"9",units_used:"14",renewal_date:"2026-07-12"},{health_score:"88 / 100",risk_level:"Low",segment:"VIP",nps:"10"},["VIP","Loyal"],[["2026-06-20","$140","Order","Fulfilled"],["2026-06-02","$88","Order","Fulfilled"]]),
-    mk("Sam Rivera","CU-5002",{recurring_value:"$40",primary_spend:"$820",net_value:"$620",avg_unit:"$41",promo_value:"$260",refunds:"$200",pending:"$60"},{sessions_30d:"1",units_used:"1",renewal_date:"2026-07-01"},{health_score:"38 / 100",risk_level:"High",segment:"Lapsing",nps:"5"},["At-Risk","Discount-led"],[["2026-04-10","$41","Order","Fulfilled"]]),
-    mk("Taylor Brooks","CU-5003",{recurring_value:"$120",primary_spend:"$2,100",net_value:"$1,980",avg_unit:"$60",promo_value:"$90",refunds:"$0",pending:"$0"},{sessions_30d:"5",units_used:"6",renewal_date:"2026-08-15"},{health_score:"66 / 100",risk_level:"Medium",segment:"Regular",nps:"7"},["Loyal","Watch"],[["2026-06-15","$60","Order","Fulfilled"]]) ];
+    C("Northwind Software","ACC-3001",{recurring_value:"$96,000",primary_spend:"$310,000",net_value:"$94,200",avg_unit:"$32,000",promo_value:"$1,200",refunds:"$1,800",pending:"$0"},{sessions_30d:"180",units_used:"140 / 160",renewal_date:"2026-10-31"},{health_score:"84 / 100",risk_level:"Low",segment:"Enterprise",nps:"9"},["Champion","Expansion"],[["2026-06-01","$8,000","Subscription","Paid"],["2026-05-01","$8,000","Subscription","Paid"]],11,1,"Advocate account, strong adoption. Reference + upsell candidate on unused modules."),
+    C("Contoso Retailing","ACC-3002",{recurring_value:"$42,000",primary_spend:"$70,000",net_value:"$38,400",avg_unit:"$21,000",promo_value:"$2,400",refunds:"$3,600",pending:"$3,500"},{sessions_30d:"12",units_used:"9 / 40",renewal_date:"2026-07-20"},{health_score:"41 / 100",risk_level:"High",segment:"Growth",nps:"4"},["At-Risk","Renewal Due"],[["2026-06-01","$3,500","Subscription","Failed"],["2026-05-01","$3,500","Subscription","Paid"]],23,-1,"Failed payment + 22% seat use. Renewal <30d. Save play, exec alignment."),
+    C("Fabrikam Inc","ACC-3003",{recurring_value:"$60,000",primary_spend:"$150,000",net_value:"$59,000",avg_unit:"$30,000",promo_value:"$0",refunds:"$1,000",pending:"$0"},{sessions_30d:"95",units_used:"55 / 70",renewal_date:"2026-12-01"},{health_score:"72 / 100",risk_level:"Medium",segment:"Growth",nps:"6"},["Steady"],[["2026-06-01","$5,000","Subscription","Paid"]],31,0,"Stable, mid health. Schedule QBR before Dec renewal."),
+    C("Initrode Systems","ACC-3004",{recurring_value:"$128,000",primary_spend:"$420,000",net_value:"$126,000",avg_unit:"$64,000",promo_value:"$0",refunds:"$0",pending:"$0"},{sessions_30d:"260",units_used:"310 / 340",renewal_date:"2027-01-15"},{health_score:"90 / 100",risk_level:"Low",segment:"Enterprise",nps:"10"},["Champion","Expansion"],[["2026-06-01","$10,600","Subscription","Paid"]],42,1,"Flagship. 91% adoption. Expansion to new BU in progress."),
+    C("Umbrella Cloud","ACC-3005",{recurring_value:"$30,000",primary_spend:"$45,000",net_value:"$27,900",avg_unit:"$15,000",promo_value:"$1,500",refunds:"$2,100",pending:"$0"},{sessions_30d:"48",units_used:"18 / 30",renewal_date:"2026-09-05"},{health_score:"63 / 100",risk_level:"Medium",segment:"Growth",nps:"6"},["Watch"],[["2026-06-01","$2,500","Subscription","Paid"]],54,0,"Adoption plateaued at 60%. Drive feature depth."),
+    C("Globex Cloud","ACC-3006",{recurring_value:"$18,000",primary_spend:"$22,000",net_value:"$16,200",avg_unit:"$9,000",promo_value:"$900",refunds:"$0",pending:"$0"},{sessions_30d:"40",units_used:"12 / 20",renewal_date:"2026-08-20"},{health_score:"58 / 100",risk_level:"Medium",segment:"Starter",nps:"—"},["Onboarding","New"],[["2026-06-01","$1,500","Subscription","Paid"]],66,1,"New logo in onboarding — drive time-to-value.") ];
+  if(v==="finance") return [
+    C("Meridian Capital LLC","CL-8801",{recurring_value:"$1.4M",primary_spend:"$12.6M",net_value:"$182,000",avg_unit:"$84,000",promo_value:"$0",refunds:"$0",pending:"$0"},{sessions_30d:"88",units_used:"34",renewal_date:"2026-09-30"},{health_score:"90 / 100",risk_level:"Low",segment:"HNW",nps:"9"},["HNW","Active Trader"],[["2026-06-28","$420,000","Buy","Filled"],["2026-06-24","$180,000","Sell","Filled"]],13,1,"HNW, high engagement. Retain + deepen wallet share; quarterly portfolio review."),
+    C("Ridgeline Partners","CL-8802",{recurring_value:"$620,000",primary_spend:"$4.1M",net_value:"$74,000",avg_unit:"$41,000",promo_value:"$1,500",refunds:"$0",pending:"$0"},{sessions_30d:"64",units_used:"21",renewal_date:"2026-10-15"},{health_score:"78 / 100",risk_level:"Low",segment:"Premium",nps:"8"},["Active Trader"],[["2026-06-27","$95,000","Buy","Filled"]],27,1,"Consistent active trader. Healthy commission run-rate."),
+    C("Cedar Point Fund","CL-8803",{recurring_value:"$90,000",primary_spend:"$1.2M",net_value:"$8,400",avg_unit:"$22,000",promo_value:"$0",refunds:"$1,200",pending:"$260,000"},{sessions_30d:"6",units_used:"4",renewal_date:"2026-07-12"},{health_score:"36 / 100",risk_level:"High",segment:"Premium",nps:"4"},["At-Risk","Dormant"],[["2026-06-20","$260,000","Withdrawal","Pending"],["2026-05-30","$40,000","Sell","Filled"]],39,-1,"Net withdrawals + trading fell off a cliff. Attrition risk — RM outreach now."),
+    C("Atlas Retail (J. Okoro)","CL-8804",{recurring_value:"$12,000",primary_spend:"$68,000",net_value:"$3,200",avg_unit:"$2,400",promo_value:"$500",refunds:"$0",pending:"$0"},{sessions_30d:"22",units_used:"9",renewal_date:"2026-08-01"},{health_score:"66 / 100",risk_level:"Medium",segment:"Retail",nps:"7"},["New","Watch"],[["2026-06-26","$3,000","Buy","Filled"]],51,1,"Newer retail client, growing activity. Nurture toward Premium tier."),
+    C("Harbor Wealth Group","CL-8805",{recurring_value:"$4,000",primary_spend:"$820,000",net_value:"$1,100",avg_unit:"$18,000",promo_value:"$0",refunds:"$0",pending:"$0"},{sessions_30d:"1",units_used:"7",renewal_date:"2026-07-08"},{health_score:"29 / 100",risk_level:"High",segment:"Premium",nps:"—"},["Dormant","At-Risk"],[["2026-03-14","$50,000","Sell","Filled"]],63,-1,"Dormant 90+ days, AUM parked. Re-activation campaign or graceful attrition."),
+    C("Summit Traders Inc","CL-8806",{recurring_value:"$310,000",primary_spend:"$2.0M",net_value:"$41,000",avg_unit:"$28,000",promo_value:"$0",refunds:"$0",pending:"$0"},{sessions_30d:"120",units_used:"46",renewal_date:"2026-11-01"},{health_score:"71 / 100",risk_level:"Medium",segment:"Premium",nps:"6"},["Active Trader","Margin"],[["2026-06-28","$120,000","Buy (margin)","Filled"]],75,0,"High activity but elevated margin usage — monitor leverage exposure.") ];
+  if(v==="retail") return [
+    C("Jordan Ellis","CU-5001",{recurring_value:"$310",primary_spend:"$6,400",net_value:"$5,900",avg_unit:"$92",promo_value:"$180",refunds:"$500",pending:"$0"},{sessions_30d:"9",units_used:"14",renewal_date:"2026-07-12"},{health_score:"88 / 100",risk_level:"Low",segment:"VIP",nps:"10"},["VIP","Loyal"],[["2026-06-20","$140","Order","Fulfilled"],["2026-06-02","$88","Order","Fulfilled"]],14,1,"Top-decile LTV, frequent. VIP nurture + early access."),
+    C("Sam Rivera","CU-5002",{recurring_value:"$40",primary_spend:"$820",net_value:"$620",avg_unit:"$41",promo_value:"$260",refunds:"$200",pending:"$60"},{sessions_30d:"1",units_used:"1",renewal_date:"2026-07-01"},{health_score:"38 / 100",risk_level:"High",segment:"Lapsing",nps:"5"},["At-Risk","Discount-led"],[["2026-04-10","$41","Order","Fulfilled"]],26,-1,"Lapsing, discount-led. Win-back with a targeted offer."),
+    C("Taylor Brooks","CU-5003",{recurring_value:"$120",primary_spend:"$2,100",net_value:"$1,980",avg_unit:"$60",promo_value:"$90",refunds:"$0",pending:"$0"},{sessions_30d:"5",units_used:"6",renewal_date:"2026-08-15"},{health_score:"66 / 100",risk_level:"Medium",segment:"Regular",nps:"7"},["Loyal","Watch"],[["2026-06-15","$60","Order","Fulfilled"]],38,0,"Steady regular. Replenishment nudge on cadence."),
+    C("Morgan Lee","CU-5004",{recurring_value:"$420",primary_spend:"$9,800",net_value:"$9,100",avg_unit:"$120",promo_value:"$120",refunds:"$300",pending:"$0"},{sessions_30d:"12",units_used:"20",renewal_date:"2026-07-20"},{health_score:"92 / 100",risk_level:"Low",segment:"VIP",nps:"10"},["VIP","Loyal"],[["2026-06-25","$180","Order","Fulfilled"]],49,1,"Highest LTV. Concierge / loyalty tier upgrade."),
+    C("Casey Kim","CU-5005",{recurring_value:"$0",primary_spend:"$540",net_value:"$400",avg_unit:"$45",promo_value:"$140",refunds:"$0",pending:"$0"},{sessions_30d:"0",units_used:"0",renewal_date:"2026-07-03"},{health_score:"30 / 100",risk_level:"High",segment:"Lapsing",nps:"4"},["Win-back"],[["2026-02-18","$45","Order","Fulfilled"]],61,-1,"No orders in 4 months. Aggressive win-back or sunset."),
+    C("Riley Fox","CU-5006",{recurring_value:"$85",primary_spend:"$310",net_value:"$300",avg_unit:"$52",promo_value:"$30",refunds:"$0",pending:"$0"},{sessions_30d:"4",units_used:"3",renewal_date:"2026-08-05"},{health_score:"60 / 100",risk_level:"Medium",segment:"New",nps:"8"},["New","Watch"],[["2026-06-18","$52","Order","Fulfilled"]],72,1,"New shopper trending up. Second-purchase incentive.") ];
+  return [ /* sandbox */
+    C("Acme Co","CX-001",{recurring_value:"$2,400",primary_spend:"$54,000",net_value:"$51,000",avg_unit:"$800",promo_value:"$600",refunds:"$900",pending:"$0"},{sessions_30d:"40",units_used:"18",renewal_date:"2026-09-01"},{health_score:"86 / 100",risk_level:"Low",segment:"Enterprise",nps:"9"},["VIP","Loyal"],[["2026-06-20","$800","Order","Complete"]],15,1,"High-value, engaged. Nurture + expand."),
+    C("Globe Traders","CX-002",{recurring_value:"$1,100",primary_spend:"$21,000",net_value:"$19,800",avg_unit:"$420",promo_value:"$300",refunds:"$500",pending:"$0"},{sessions_30d:"22",units_used:"11",renewal_date:"2026-08-10"},{health_score:"70 / 100",risk_level:"Medium",segment:"Mid",nps:"7"},["Loyal","Watch"],[["2026-06-14","$420","Order","Complete"]],28,0,"Steady mid-tier. Reinforce value."),
+    C("Nova Retail","CX-003",{recurring_value:"$120",primary_spend:"$3,400",net_value:"$2,900",avg_unit:"$90",promo_value:"$400",refunds:"$300",pending:"$220"},{sessions_30d:"2",units_used:"1",renewal_date:"2026-07-04"},{health_score:"34 / 100",risk_level:"High",segment:"Small",nps:"3"},["At-Risk"],[["2026-05-02","$90","Order","Complete"]],37,-1,"Engagement collapsed + outstanding balance. Intervene."),
+    C("Pinecone Labs","CX-004",{recurring_value:"$300",primary_spend:"$1,200",net_value:"$1,150",avg_unit:"$150",promo_value:"$50",refunds:"$0",pending:"$0"},{sessions_30d:"9",units_used:"5",renewal_date:"2026-08-22"},{health_score:"64 / 100",risk_level:"Medium",segment:"New",nps:"8"},["New"],[["2026-06-22","$150","Order","Complete"]],52,1,"New and growing. Onboard fully."),
+    C("Vertex Group","CX-005",{recurring_value:"$1,800",primary_spend:"$36,000",net_value:"$33,000",avg_unit:"$600",promo_value:"$400",refunds:"$1,200",pending:"$0"},{sessions_30d:"18",units_used:"14",renewal_date:"2026-09-15"},{health_score:"68 / 100",risk_level:"Medium",segment:"Mid",nps:"6"},["Watch"],[["2026-06-10","$600","Order","Complete"]],64,0,"Rising refunds eroding net. Investigate quality."),
+    C("Orion Supplies","CX-006",{recurring_value:"$900",primary_spend:"$14,500",net_value:"$13,900",avg_unit:"$300",promo_value:"$150",refunds:"$0",pending:"$0"},{sessions_30d:"15",units_used:"9",renewal_date:"2026-08-30"},{health_score:"77 / 100",risk_level:"Low",segment:"Mid",nps:"8"},["Loyal"],[["2026-06-19","$300","Order","Complete"]],76,1,"Reliable repeat buyer. Loyalty reward.") ];
 }
 
 /* ============ VIEWS ============ */
 function riskCls(r){ r=(r||"").toLowerCase(); return r.includes("high")?"high":(r.includes("med")||r.includes("mid"))?"mid":"low"; }
 function tagColor(t){ return V().tagColors[t]||"#8fa8cc"; }
-function tagHTML(tags){ return `<div class="tags">${(tags||[]).map(t=>`<span class="tag" style="background:${tagColor(t)}22;color:${tagColor(t)}">${t}</span>`).join("")}</div>`; }
+function tagHTML(tags,click){ return `<div class="tags">${(tags||[]).map(t=>`<span class="tag ${click?'click':''}" ${click?`onclick="toggleTag('${t}')"`:''} style="background:${tagColor(t)}22;color:${tagColor(t)}">${t}</span>`).join("")}</div>`; }
+function firstVal(c,k){ return c.money[k]??c.risk[k]??c.activity[k]??"—"; }
 
-function showView(name){
-  document.querySelectorAll(".navtabs .t").forEach(t=>t.classList.toggle("active",t.dataset.view===name));
-  if(name==="dashboard") renderDashboard(); else renderAnalyze();
-}
+function showView(name){ document.querySelectorAll(".navtabs .t").forEach(t=>t.classList.toggle("active",t.dataset.view===name));
+  if(name==="dashboard") renderDashboard(); else renderAnalyze(); }
 function renderDashboard(){
-  const v=V();
-  const cards=CUSTOMERS.map((c,i)=>{
-    const key=v.kpis[0]; const val=c.money[key]??c.risk[key]??c.activity[key]??"—";
-    return `<div class="ccard" onclick="openCustomer(${i})">
+  const v=V(); const q=QUERY.toLowerCase();
+  const list=CUSTOMERS.filter(c=>!q||c.entity.name.toLowerCase().includes(q)||(c.entity.entity_id||"").toLowerCase().includes(q));
+  const cards=list.map((c)=>{ const gi=CUSTOMERS.indexOf(c); const key=v.kpis[0];
+    return `<div class="ccard" onclick="openCustomer(${gi})">
       <div class="row"><div><div class="cn">${c.entity.name}</div><div class="ci">${c.entity.entity_id||""}</div></div>
       <span class="pill ${riskCls(c.risk.risk_level)}">${c.risk.risk_level||"—"}</span></div>
-      <div class="cl">${label(key)}</div><div class="cm">${val}</div>
-      ${tagHTML(c.tags)}</div>`;
-  }).join("");
+      <div class="cl">${label(key)}</div><div class="cm">${firstVal(c,key)}</div>${tagHTML(c.tags)}</div>`; }).join("");
   $("#app").innerHTML=`<div class="section-card"><div class="row">
     <div><h2>${v.entities}</h2><div class="sub">${CUSTOMERS.length} ${v.entities.toLowerCase()} · ${SETUP.business}</div></div>
-    <button class="btn p" onclick="showView('analyze')">+ Add ${v.entity}</button></div>
-    ${CUSTOMERS.length?`<div class="grid">${cards}</div>`:`<div class="empty">No ${v.entities.toLowerCase()} yet. Use the browser plugin's “Open in CustomerPulse”, or load demo data from Add / Analyze.</div>`}
-  </div>`;
+    <input class="search" placeholder="Search ${v.entities.toLowerCase()}…" value="${QUERY}" oninput="QUERY=this.value;renderDashboard();this.focus?.()">
+    </div>${list.length?`<div class="grid">${cards}</div>`:`<div class="empty">No matches.</div>`}</div>`;
+  const s=$(".search"); if(s){ s.focus(); s.setSelectionRange(s.value.length,s.value.length); }
 }
-function renderAnalyze(){
-  const v=V();
-  $("#app").innerHTML=`<div class="section-card">
-    <h2>Add / Analyze a ${v.entity}</h2>
-    <div class="sub" style="margin:6px 0 16px">Bring data in via the browser plugin (canonical handoff), or explore with demo data.</div>
+function renderAnalyze(){ const v=V();
+  $("#app").innerHTML=`<div class="section-card"><h2>Add / Analyze a ${v.entity}</h2>
+    <div class="sub" style="margin:6px 0 16px">Bring data in via the browser plugin (canonical handoff), or reset the seeded sample set.</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn p" onclick="loadDemo()">Load demo ${v.entities.toLowerCase()}</button>
-      <button class="btn" onclick="showView('dashboard')">← Back to dashboard</button>
-    </div>
+      <button class="btn p" onclick="CUSTOMERS=demoData();showView('dashboard')">Reload sample ${v.entities.toLowerCase()}</button>
+      <button class="btn" onclick="showView('dashboard')">← Dashboard</button></div>
     <div style="margin-top:20px;color:var(--text2);font-size:13.5px;line-height:1.7">
-      <b>Plugin handoff:</b> the CustomerPulse browser plugin scrapes any back-office / CRM page into the canonical schema and opens
-      <span class="mono">…/?customer=&lt;encoded&gt;</span> — this app decodes it and relabels every field as <b>${v.label}</b>.
-    </div>
-  </div>`;
+      <b>Plugin handoff:</b> the CustomerPulse browser plugin scrapes any back-office / CRM into the canonical schema and opens
+      <span class="mono">…/?customer=&lt;encoded&gt;</span> — this app decodes it and relabels every field as <b>${v.label}</b>.</div></div>`;
 }
-function openCustomer(i){ CURRENT=CUSTOMERS[i]; renderProfile(); }
-function kvRows(keys,obj){ return keys.filter(k=>obj[k]!=null).map(k=>{
-  let val=obj[k]; if(k==="risk_level") val=`<span class="pill ${riskCls(val)}">${val}</span>`;
-  return `<tr><th>${label(k)}</th><td>${val}</td></tr>`; }).join(""); }
+function openCustomer(i){ CURRENT=CUSTOMERS[i]; PTAB="Overview"; renderProfile(); }
+function kvRows(keys,obj){ return keys.filter(k=>obj[k]!=null).map(k=>{ let val=obj[k];
+  if(k==="risk_level") val=`<span class="pill ${riskCls(val)}">${val}</span>`; return `<tr><th>${label(k)}</th><td>${val}</td></tr>`; }).join(""); }
+
 function renderProfile(){
   const c=CURRENT, v=V();
-  const kpi=(k)=>{ const val=c.money[k]??c.risk[k]??c.activity[k]??"—"; return `<div class="kpi"><div class="l">${label(k)}</div><div class="v">${val}</div></div>`; };
-  const tx=c.transactions&&c.transactions.length?`<div class="section-card"><h2>Transactions</h2>
-    <table class="tx"><thead><tr><th>Date</th><th>Amount</th><th>Type</th><th>Status</th></tr></thead><tbody>
-    ${c.transactions.map(t=>`<tr><td>${t[0]}</td><td>${t[1]}</td><td>${t[2]}</td><td>${t[3]||""}</td></tr>`).join("")}</tbody></table></div>`:"";
+  const kpi=k=>`<div class="kpi"><div class="l">${label(k)}</div><div class="v">${firstVal(c,k)}</div></div>`;
+  const tabs=["Overview","Financials","Activity & Risk","Transactions","Action Log","Notes"];
+  const tabbar=tabs.map(t=>`<div class="pt ${t===PTAB?'active':''}" onclick="PTAB='${t}';renderProfile()">${t}</div>`).join("");
   $("#app").innerHTML=`
     <span class="back" onclick="showView('dashboard')">← ${v.entities}</span>
     <div class="section-card"><div class="row">
       <div><h2>${c.entity.name}</h2><div class="sub mono">${c.entity.entity_id||""} · ${v.owner}: ${c.entity.owner||CSM||"—"}</div></div>
       <span class="pill ${riskCls(c.risk.risk_level)}">${label("risk_level")}: ${c.risk.risk_level||"—"}</span></div>
-      ${tagHTML(c.tags)}
-      <div class="kpis">${v.kpis.map(kpi).join("")}</div>
-    </div>
-    <div class="section-card"><div class="kvcols">
-      <div><h2 style="font-size:15px;margin-bottom:8px">Value</h2><table class="kv">${kvRows(MONEY_KEYS,c.money)}</table></div>
-      <div><h2 style="font-size:15px;margin-bottom:8px">Activity &amp; Risk</h2><table class="kv">${kvRows(ACTIVITY_KEYS,c.activity)+kvRows(RISK_KEYS,c.risk)}</table></div>
-    </div></div>
-    ${tx}
-    <div class="section-card"><div class="row"><h2>AI review</h2>
-      <button class="btn p" id="aiBtn" onclick="runAI()">Generate ${v.label} brief</button></div>
-      <div class="ai" id="aiOut" style="display:none"></div>
-    </div>`;
+      ${tagHTML(c.tags,true)}<div class="kpis">${v.kpis.map(kpi).join("")}</div></div>
+    <div class="ptabs">${tabbar}</div>
+    <div id="ptabcontent"></div>`;
+  renderTab();
+}
+function renderTab(){
+  const c=CURRENT, v=V(), el=$("#ptabcontent");
+  if(PTAB==="Overview"){
+    el.innerHTML=`<div class="section-card">
+      <div class="chartwrap">
+        <div class="chartbox"><div class="ct">${v.seriesLabel.net}</div><canvas id="chA" height="150"></canvas></div>
+        <div class="chartbox"><div class="ct">${v.seriesLabel.spend}</div><canvas id="chB" height="150"></canvas></div>
+      </div></div>
+      <div class="section-card"><div class="row"><h2>AI review</h2>
+        <button class="btn p" id="aiBtn" onclick="runAI()">Generate ${v.label} brief</button></div>
+        <div class="ai" id="aiOut" style="display:none"></div>
+        <div style="margin-top:14px;color:var(--text2);font-size:13.5px"><b>CSM note:</b> ${c.note||"—"}</div></div>`;
+    setTimeout(drawCharts,0);
+  } else if(PTAB==="Financials"){
+    el.innerHTML=`<div class="section-card"><h2 style="font-size:15px;margin-bottom:10px">Value</h2>
+      <table class="kv">${kvRows(MONEY_KEYS,c.money)}</table></div>`;
+  } else if(PTAB==="Activity & Risk"){
+    el.innerHTML=`<div class="section-card"><div class="kvcols">
+      <div><h2 style="font-size:15px;margin-bottom:8px">Activity</h2><table class="kv">${kvRows(ACTIVITY_KEYS,c.activity)}</table></div>
+      <div><h2 style="font-size:15px;margin-bottom:8px">Risk</h2><table class="kv">${kvRows(RISK_KEYS,c.risk)}</table></div></div></div>`;
+  } else if(PTAB==="Transactions"){
+    el.innerHTML=`<div class="section-card"><h2 style="font-size:15px;margin-bottom:8px">Transactions</h2>
+      ${c.transactions&&c.transactions.length?`<table class="tx"><thead><tr><th>Date</th><th>Amount</th><th>Type</th><th>Status</th></tr></thead>
+      <tbody>${c.transactions.map(t=>`<tr><td>${t[0]}</td><td>${t[1]}</td><td>${t[2]}</td><td>${t[3]||""}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">No transactions.</div>`}</div>`;
+  } else if(PTAB==="Action Log"){
+    const opts=v.actions.map(a=>`<option>${a}</option>`).join("");
+    const items=c.actions.length?c.actions.map(a=>`<div class="item"><div class="ty">${a.type}</div><div class="nt">${a.note||""}</div><div class="dt">${a.when}</div></div>`).join(""):`<div class="empty">No actions logged yet.</div>`;
+    el.innerHTML=`<div class="section-card"><h2 style="font-size:15px;margin-bottom:10px">Log an action</h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <select id="actType">${opts}</select>
+        <input class="search" id="actNote" placeholder="Note (optional)" style="flex:1;min-width:200px">
+        <button class="btn p" onclick="addAction()">Add</button></div>
+      <div class="actlog">${items}</div></div>`;
+  } else if(PTAB==="Notes"){
+    el.innerHTML=`<div class="section-card"><h2 style="font-size:15px;margin-bottom:10px">Notes</h2>
+      <textarea id="noteBox">${c.note||""}</textarea>
+      <div style="margin-top:12px"><button class="btn p" onclick="saveNote()">Save note</button></div></div>`;
+  }
+}
+function toggleTag(t){ const s=new Set(CURRENT.tags); s.has(t)?s.delete(t):s.add(t); CURRENT.tags=[...s]; renderProfile(); }
+function addAction(){ const ty=$("#actType").value, nt=$("#actNote").value.trim();
+  CURRENT.actions.unshift({type:ty,note:nt,when:new Date().toISOString().slice(0,16).replace("T"," ")}); renderTab(); }
+function saveNote(){ CURRENT.note=$("#noteBox").value; alert("Note saved."); }
+
+/* ============ CHARTS (canvas 2D, DPR-aware) ============ */
+function setupCanvas(cv){ const DPR=window.devicePixelRatio||1; const w=cv.clientWidth||520, h=cv.height;
+  cv.width=w*DPR; cv.height=h*DPR; const ctx=cv.getContext("2d"); ctx.scale(DPR,DPR); return {ctx,w,h}; }
+function drawCharts(){ const c=CURRENT; if(!c||!c.daily) return;
+  const a=$("#chA"), b=$("#chB"); if(!a||!a.getContext) return;
+  // A: cumulative net line + area
+  const {ctx,w,h}=setupCanvas(a); const nets=c.daily.map(d=>d.net);
+  const mn=Math.min(0,...nets), mx=Math.max(0,...nets), pad=8, span=(mx-mn)||1;
+  const X=i=>pad+i*(w-2*pad)/(c.daily.length-1), Y=val=>h-pad-(val-mn)*(h-2*pad)/span;
+  ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.beginPath(); ctx.moveTo(pad,Y(0)); ctx.lineTo(w-pad,Y(0)); ctx.stroke();
+  ctx.beginPath(); c.daily.forEach((d,i)=>i?ctx.lineTo(X(i),Y(d.net)):ctx.moveTo(X(i),Y(d.net)));
+  ctx.lineTo(X(c.daily.length-1),Y(0)); ctx.lineTo(X(0),Y(0)); ctx.closePath();
+  ctx.fillStyle="rgba(0,192,118,.14)"; ctx.fill();
+  ctx.beginPath(); c.daily.forEach((d,i)=>i?ctx.lineTo(X(i),Y(d.net)):ctx.moveTo(X(i),Y(d.net)));
+  ctx.strokeStyle="#00c076"; ctx.lineWidth=2; ctx.stroke();
+  // B: spend bars
+  const s=setupCanvas(b); const sp=c.daily.map(d=>d.spend), smx=Math.max(...sp)||1, bw=(s.w-16)/c.daily.length;
+  c.daily.forEach((d,i)=>{ const bh=(d.spend/smx)*(s.h-16); s.ctx.fillStyle="rgba(79,141,255,.7)";
+    s.ctx.fillRect(8+i*bw,s.h-8-bh,Math.max(1,bw-1.5),bh); });
 }
 
-/* ============ AI (Gemini, KB swaps per vertical) ============ */
-async function runAI(){
-  const c=CURRENT, v=V(), out=$("#aiOut"), btn=$("#aiBtn");
-  out.style.display="block";
+/* ============ AI ============ */
+async function runAI(){ const c=CURRENT, v=V(), out=$("#aiOut"), btn=$("#aiBtn"); out.style.display="block";
   if(!GKEY){ out.textContent="Add your Gemini API key in ⚙ Settings to generate an AI review."; return; }
   btn.disabled=true; out.textContent="Analysing…";
   const facts=`${v.entity}: ${c.entity.name} (${c.entity.entity_id||""})
@@ -308,14 +391,11 @@ Risk: ${JSON.stringify(c.risk)}
 Tags: ${(c.tags||[]).join(", ")}
 Recent transactions: ${JSON.stringify(c.transactions||[])}`;
   const prompt=`${v.kb.role}\n${v.kb.guidance}\n\nHere is one ${v.entity.toLowerCase()} from ${SETUP.business} (${v.label}). Field names use ${v.label} terminology. Write a concise 3-4 sentence brief for the ${v.owner}: read the pattern between the numbers, name the archetype, flag any risk, and recommend one specific next action. Do not restate the raw numbers.\n\n${facts}`;
-  try{
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GKEY}`,{
+  try{ const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GKEY}`,{
       method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:400}})});
-    const j=await r.json();
-    out.textContent=j?.candidates?.[0]?.content?.parts?.[0]?.text || ("No response. "+(j?.error?.message||""));
-  }catch(e){ out.textContent="Error: "+e.message; }
-  btn.disabled=false;
+    const j=await r.json(); out.textContent=j?.candidates?.[0]?.content?.parts?.[0]?.text||("No response. "+(j?.error?.message||""));
+  }catch(e){ out.textContent="Error: "+e.message; } btn.disabled=false;
 }
 
 /* ============ SETTINGS ============ */
@@ -323,19 +403,17 @@ function openSettings(){ $("#setCsm").value=CSM; $("#setKey").value=GKEY; $("#se
 function closeSettings(){ $("#settingsModal").classList.remove("show"); }
 function saveSettings(){ CSM=$("#setCsm").value.trim(); GKEY=$("#setKey").value.trim();
   localStorage.setItem("cp_csm",CSM); localStorage.setItem("cp_gemini_key",GKEY); closeSettings(); }
-function loadDemo(){ CUSTOMERS=demoData(); showView("dashboard"); }
 
 /* ============ BOOT ============ */
-function boot(){
-  const v=V();
+function boot(){ const v=V();
   $("#nav").style.display="flex"; $("#app").style.display="block";
-  $("#bizlabel").textContent="· "+SETUP.business;
-  $("#verticalChip").textContent=v.icon+" "+v.label;
+  $("#bizlabel").textContent="· "+SETUP.business; $("#verticalChip").textContent=v.icon+" "+v.label;
   document.querySelectorAll(".navtabs .t").forEach(t=>t.onclick=()=>showView(t.dataset.view));
-  const fromPlugin=loadFromParam();
-  if(fromPlugin){ CUSTOMERS=[fromPlugin]; CURRENT=fromPlugin; renderProfile(); }
-  else { CUSTOMERS=[]; showView("dashboard"); }
+  const fromPlugin=loadFromParam(); CUSTOMERS=demoData();
+  if(fromPlugin){ CUSTOMERS.unshift(fromPlugin); CURRENT=fromPlugin; PTAB="Overview"; renderProfile(); }
+  else showView("dashboard");
 }
+window.addEventListener("resize",()=>{ if(CURRENT&&PTAB==="Overview"&&$("#chA")) drawCharts(); });
 if(SETUP && VERTICALS[SETUP.vertical]) boot(); else renderOnboarding();
 </script>
 </body>
