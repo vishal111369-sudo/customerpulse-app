@@ -229,8 +229,9 @@ function normalize(d){ const c=(d.entity||d.money)?{entity:d.entity||{},money:d.
   c.daily=c.daily||genDaily(7,0); c.actions=c.actions||[]; c.note=c.note||""; return c; }
 
 /* ============ DEMO DATA (seeded per vertical) ============ */
+const OWNER_NAMES=["Priya N.","Devon M.","Sara L.","Tom W.","Alex R."];
 function C(name,id,money,act,riskO,tags,tx,seed,trend,note){
-  return {entity:{name,entity_id:id,owner:CSM||V().owner}, money, activity:act, risk:riskO, tags,
+  return {entity:{name,entity_id:id,owner:CSM||OWNER_NAMES[seed%OWNER_NAMES.length]}, money, activity:act, risk:riskO, tags,
     transactions:tx, daily:genDaily(seed,trend), actions:[], note}; }
 function demoData(){
   const v=SETUP.vertical;
