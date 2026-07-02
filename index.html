@@ -243,7 +243,7 @@ async function signIn(){
   if(!email||!pass){ amsg("Enter your email and password.",false); return; }
   amsg("Signing in…",true);
   const {data,error}=await SBC.auth.signInWithPassword({email,password:pass});
-  if(error){ amsg(error.message,false); return; }
+  if(error){ amsg(error.message||error.msg||("Something went wrong ("+(error.status||error.code||"error")+"). Please try again."),false); return; }
   USER=data.user; await afterAuth();
 }
 async function signUp(){
@@ -252,7 +252,7 @@ async function signUp(){
   if(!obSel||!biz){ amsg("Pick a domain and enter your organisation to create an account.",false); return; }
   amsg("Creating account…",true);
   const {data,error}=await SBC.auth.signUp({email,password:pass,options:{emailRedirectTo:location.origin,data:{vertical:obSel,business:biz}}});
-  if(error){ amsg(error.message,false); return; }
+  if(error){ amsg(error.message||error.msg||("Something went wrong ("+(error.status||error.code||"error")+"). Please try again."),false); return; }
   if(data.session){ USER=data.user; await afterAuth(); }
   else amsg("Account created — check your email to confirm, then sign in.",true);
 }
