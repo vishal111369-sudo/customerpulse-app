@@ -107,6 +107,7 @@
     <span id="modeChip" style="font-size:12px;font-weight:700"></span>
     <span class="chip" id="verticalChip"></span>
     <span class="chip" onclick="openSettings()">⚙ Settings</span>
+    <span class="chip" onclick="logout()">Logout</span>
   </div>
 </div>
 <div class="wrap" id="app" style="display:none"></div>
@@ -120,8 +121,8 @@
     <input id="setKey" type="password" placeholder="AI…">
     <label>Live data — CustomerPulse API key (optional)</label>
     <input id="setApi" type="password" placeholder="cp_live_… (leave blank for demo data)">
-    <label>Change industry / business</label>
-    <button class="btn" style="margin-top:6px" onclick="reOnboard()">Re-run onboarding ↻</button>
+    <label>Change domain / organisation / sandbox</label>
+    <button class="btn" style="margin-top:6px" onclick="reOnboard()">Change workspace ↻</button>
     <div style="display:flex;gap:10px;margin-top:22px">
       <button class="btn p" style="flex:1" onclick="saveSettings()">Save</button>
       <button class="btn" onclick="closeSettings()">Close</button>
@@ -171,19 +172,6 @@ const VERTICALS = {
     tagColors:{HNW:"#ffd740","Active Trader":"#00c076",Dormant:"#e8304a","At-Risk":"#4f8dff",New:"#b47fff",Margin:"#ff8fa3",Watch:"#00e5ff"},
     kb:{ role:"You are a senior brokerage / trading-platform CRM analyst focused on client relationship health.",
       guidance:"Assess engagement and attrition risk from behaviour: declining trade frequency, net withdrawals, dormancy, falling AUM, or margin/leverage exposure. HNW + active = retain/nurture. IMPORTANT: this is relationship-health analysis, NOT investment advice — never recommend buying/selling securities or predict markets. Recommend a relationship action only: RM outreach, re-activation campaign, fee review, or retention offer." } },
-  "sandbox": {
-    label:"Sandbox", icon:"🧪", desc:"Generic demo workspace", placeholder:"e.g. Demo Co",
-    entity:"Customer", entities:"Customers", owner:"Owner", currency:"USD",
-    labels:{ recurring_value:"Monthly Revenue", primary_spend:"Lifetime Value", pending:"Outstanding",
-      refunds:"Refunds", promo_value:"Credits", net_value:"Net Revenue", avg_unit:"Avg Order",
-      sessions_30d:"Sessions (30d)", units_used:"Active Units", renewal_date:"Next Contact",
-      risk_level:"Risk", health_score:"Health Score", segment:"Segment", nps:"NPS" },
-    kpis:["net_value","primary_spend","health_score","risk_level"],
-    seriesLabel:{net:"Revenue trajectory", spend:"Activity"},
-    actions:["Call","Email","Follow-up","Offer","Escalate","Note"],
-    tagColors:{VIP:"#ffd740",Loyal:"#00c076","At-Risk":"#e8304a",New:"#b47fff",Watch:"#00e5ff"},
-    kb:{ role:"You are a senior customer-intelligence analyst.",
-      guidance:"Read the customer's value, engagement and risk signals holistically. Name the archetype (VIP / Loyal / Steady / At-Risk / New). Flag declining engagement, rising refunds, or outstanding balance. Recommend one concrete next action." } }
 };
 const MONEY_KEYS=["recurring_value","primary_spend","net_value","avg_unit","promo_value","refunds","pending"];
 const ACTIVITY_KEYS=["sessions_30d","units_used","renewal_date"];
@@ -196,6 +184,9 @@ let GKEY=localStorage.getItem("cp_gemini_key")||"";
 let APIKEY=localStorage.getItem("cp_api_key")||"";
 const CP_API="https://sufuqnqmcvdrxnbfmpwh.supabase.co/functions/v1";
 const CP_ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1ZnVxbnFtY3ZkcnhuYmZtcHdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODYyNDcsImV4cCI6MjA5Njc2MjI0N30.QcCeSrYA0AD8tSslC3XjiLfRp-dkr_-DSBsDArTAz4E";
+const SB_URL="https://sufuqnqmcvdrxnbfmpwh.supabase.co";
+const SBC=window.supabase.createClient(SB_URL,CP_ANON);
+let USER=null;
 let MODE="demo";
 let CUSTOMERS=[], CURRENT=null, obSel=null, PTAB="Overview", QUERY="";
 async function pullLive(){ if(!APIKEY) return null;
@@ -211,26 +202,80 @@ function genDaily(seed,trend){ const r=seeded(seed); let net=0; const out=[];
   for(let i=0;i<30;i++){ const base=trend*45+(r()-0.45)*260; net+=base;
     out.push({d:i,spend:Math.max(20,Math.round(160+(r()-0.3)*380)),net:Math.round(net)}); } return out; }
 
-/* ============ ONBOARDING ============ */
-function renderOnboarding(){
-  const opts=Object.entries(VERTICALS).map(([id,v])=>
-    `<div class="vopt" data-id="${id}" onclick="selVertical('${id}')">
-      <div class="ic">${v.icon}</div><div><div class="nm">${v.label}</div><div class="ds">${v.desc}</div></div></div>`).join("");
+/* ============ AUTH + DOMAIN SIGN-IN ============ */
+let obSandbox=false;
+function domainTiles(){ return Object.entries(VERTICALS).map(([id,v])=>
+  `<div class="vopt ${obSel===id?'sel':''}" data-id="${id}" onclick="selVertical('${id}')">
+    <div class="ic">${v.icon}</div><div><div class="nm">${v.label}</div><div class="ds">${v.desc}</div></div></div>`).join(""); }
+function renderAuth(mode){
+  const setup = mode==='setup';   // already authed → just choose domain / org
   $("#onboarding").innerHTML=`<div class="overlay"><div class="ob">
-    <h1>Welcome to CustomerPulse</h1>
-    <p>One customer-intelligence core, tuned to your world. Pick your industry and name your business — every label, metric, chart and the AI brain adapt to match. Your workspace opens pre-seeded with sample ${""}data you can explore right away.</p>
-    <label>Industry</label><div class="verticals">${opts}</div>
-    <label>Business name</label><input id="obBiz" placeholder="Your business" oninput="obCheck()">
-    <button class="go" id="obGo" disabled onclick="finishOnboarding()">Launch workspace →</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <span style="width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--purple));display:grid;place-items:center;font-weight:800">◉</span>
+      <h1 style="font-size:22px;margin:0">CustomerPulse</h1></div>
+    <p>${setup?'Choose your domain and name your organisation to open your workspace.':'Customer intelligence, tuned to your world — sign in to continue.'}</p>
+    ${setup?'':`
+      <label>Email</label><input id="auEmail" type="email" placeholder="you@company.com">
+      <label>Password</label><input id="auPass" type="password" placeholder="••••••••">`}
+    <label>Organisation</label><input id="obBiz" placeholder="e.g. Meridian Markets" oninput="obCheck()">
+    <label>Domain</label><div class="verticals">${domainTiles()}</div>
+    <label style="display:flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--text);cursor:pointer;margin-top:16px">
+      <input type="checkbox" id="obSandbox" ${obSandbox?'checked':''} onchange="obSandbox=this.checked" style="width:auto;accent-color:var(--accent)">
+      Use Sandbox — explore this domain with seeded sample data (test workspace)</label>
+    <div id="auMsg"></div>
+    ${setup?
+      `<button class="go" id="obGo" ${obSel?'':'disabled'} onclick="saveWorkspace()">Open workspace →</button>`:
+      `<div style="display:flex;gap:10px;margin-top:20px">
+        <button class="go" style="margin:0;flex:1" onclick="signIn()">Sign in</button>
+        <button class="go" style="margin:0;flex:1;background:var(--surface3);color:var(--text);border:1px solid var(--border2)" onclick="signUp()">Create account</button></div>
+      <div style="color:var(--muted);font-size:12px;margin-top:12px;text-align:center">Organisation &amp; domain are required to create an account. Data is isolated per organisation.</div>`}
   </div></div>`;
   $("#onboarding").style.display="block";
 }
 function selVertical(id){ obSel=id; document.querySelectorAll(".vopt").forEach(e=>e.classList.toggle("sel",e.dataset.id===id));
-  const b=$("#obBiz"); if(!b.value) b.placeholder=VERTICALS[id].placeholder; obCheck(); }
-function obCheck(){ $("#obGo").disabled=!(obSel && $("#obBiz").value.trim()); }
-function finishOnboarding(){ SETUP={vertical:obSel,business:$("#obBiz").value.trim()};
-  localStorage.setItem("cp_setup",JSON.stringify(SETUP)); $("#onboarding").style.display="none"; boot(); }
-function reOnboard(){ closeSettings(); obSel=null; renderOnboarding(); }
+  const b=$("#obBiz"); if(b&&!b.value) b.placeholder=VERTICALS[id].placeholder; obCheck(); }
+function obCheck(){ const g=$("#obGo"); if(g) g.disabled=!(obSel && $("#obBiz").value.trim()); }
+function amsg(t,ok){ const e=$("#auMsg"); if(!e) return; e.textContent=t;
+  e.style.cssText="margin-top:14px;font-size:13px;padding:9px 11px;border-radius:8px;"+(ok?"background:rgba(0,192,118,.12);color:var(--green)":"background:rgba(232,48,74,.14);color:var(--red)"); }
+
+async function signIn(){
+  const email=$("#auEmail").value.trim(), pass=$("#auPass").value;
+  if(!email||!pass){ amsg("Enter your email and password.",false); return; }
+  amsg("Signing in…",true);
+  const {data,error}=await SBC.auth.signInWithPassword({email,password:pass});
+  if(error){ amsg(error.message,false); return; }
+  USER=data.user; await afterAuth();
+}
+async function signUp(){
+  const email=$("#auEmail").value.trim(), pass=$("#auPass").value, biz=$("#obBiz").value.trim();
+  if(!email||!pass){ amsg("Enter your email and password.",false); return; }
+  if(!obSel||!biz){ amsg("Pick a domain and enter your organisation to create an account.",false); return; }
+  amsg("Creating account…",true);
+  const {data,error}=await SBC.auth.signUp({email,password:pass,options:{emailRedirectTo:location.origin,data:{vertical:obSel,business:biz}}});
+  if(error){ amsg(error.message,false); return; }
+  if(data.session){ USER=data.user; await afterAuth(); }
+  else amsg("Account created — check your email to confirm, then sign in.",true);
+}
+async function afterAuth(){
+  const md=USER.user_metadata||{};
+  if(!CSM){ CSM=md.name||USER.email; localStorage.setItem("cp_csm",CSM); }
+  const formBiz=$("#obBiz")?$("#obBiz").value.trim():"";
+  const vertical=(obSel&&VERTICALS[obSel])?obSel:(VERTICALS[md.vertical]?md.vertical:null);
+  const business=formBiz||md.business;
+  if(vertical&&business){ await saveWorkspace(vertical,business); }
+  else renderAuth('setup');
+}
+async function saveWorkspace(vertical,business){
+  vertical=vertical||obSel; business=business||($("#obBiz")?$("#obBiz").value.trim():"");
+  if(!vertical||!VERTICALS[vertical]||!business){ amsg("Pick a domain and enter your organisation.",false); return; }
+  const sandbox = $("#obSandbox") ? $("#obSandbox").checked : !!obSandbox;
+  SETUP={vertical,business,sandbox};
+  localStorage.setItem("cp_setup",JSON.stringify(SETUP));
+  try{ await SBC.auth.updateUser({data:{vertical,business}}); }catch(e){}
+  $("#onboarding").style.display="none"; boot();
+}
+async function logout(){ try{ await SBC.auth.signOut(); }catch(e){} localStorage.removeItem("cp_setup"); location.reload(); }
+function reOnboard(){ closeSettings(); obSel=SETUP?SETUP.vertical:null; obSandbox=SETUP?!!SETUP.sandbox:false; renderAuth('setup'); }
 
 /* ============ INGESTION ============ */
 function loadFromParam(){ const p=new URLSearchParams(location.search).get("customer"); if(!p) return null;
@@ -294,7 +339,7 @@ function renderDashboard(){
   $("#app").innerHTML=`<div class="section-card"><div class="row">
     <div><h2>${v.entities}</h2><div class="sub">${CUSTOMERS.length} ${v.entities.toLowerCase()} · ${SETUP.business}</div></div>
     <input class="search" placeholder="Search ${v.entities.toLowerCase()}…" value="${QUERY}" oninput="QUERY=this.value;renderDashboard();this.focus?.()">
-    </div>${list.length?`<div class="grid">${cards}</div>`:`<div class="empty">No matches.</div>`}</div>`;
+    </div>${list.length?`<div class="grid">${cards}</div>`:(CUSTOMERS.length===0?`<div class="empty">No ${v.entities.toLowerCase()} yet.<br>Push data via the ingestion API / browser plugin, add your API key in ⚙ Settings, or tick <b>Use Sandbox</b> at sign-in to explore with sample data.</div>`:`<div class="empty">No matches.</div>`)}</div>`;
   const s=$(".search"); if(s){ s.focus(); s.setSelectionRange(s.value.length,s.value.length); }
 }
 function renderAnalyze(){ const v=V();
@@ -424,16 +469,20 @@ async function boot(){ const v=V();
   $("#bizlabel").textContent="· "+SETUP.business; $("#verticalChip").textContent=v.icon+" "+v.label;
   document.querySelectorAll(".navtabs .t").forEach(t=>t.onclick=()=>showView(t.dataset.view));
   const fromPlugin=loadFromParam();
-  const live=await pullLive();
-  if(live && live.customers.length){ MODE="live"; CUSTOMERS=live.customers.map(normalize); }
-  else { MODE="demo"; CUSTOMERS=demoData(); }
-  $("#modeChip").textContent = MODE==="live" ? "● Live" : "◦ Demo";
-  $("#modeChip").style.color = MODE==="live" ? "var(--green)" : "var(--text2)";
+  if(SETUP.sandbox){ MODE="sandbox"; CUSTOMERS=demoData(); }
+  else { const live=await pullLive(); if(live && live.customers.length){ MODE="live"; CUSTOMERS=live.customers.map(normalize); } else { MODE="empty"; CUSTOMERS=[]; } }
+  $("#modeChip").textContent = MODE==="sandbox"?"🧪 Sandbox" : MODE==="live"?"● Live" : "◦ No data yet";
+  $("#modeChip").style.color = MODE==="live"?"var(--green)" : MODE==="sandbox"?"var(--gold)" : "var(--text2)";
   if(fromPlugin){ CUSTOMERS.unshift(fromPlugin); CURRENT=fromPlugin; PTAB="Overview"; renderProfile(); }
   else showView("dashboard");
 }
 window.addEventListener("resize",()=>{ if(CURRENT&&PTAB==="Overview"&&$("#chA")) drawCharts(); });
-if(SETUP && VERTICALS[SETUP.vertical]) boot(); else renderOnboarding();
+SBC.auth.onAuthStateChange((e,session)=>{ if(e==="SIGNED_IN" && session && !USER){ USER=session.user; afterAuth(); } });
+(async()=>{
+  try{ const { data:{ session } } = await SBC.auth.getSession();
+    if(session){ USER=session.user; await afterAuth(); return; } }catch(e){}
+  renderAuth('full');
+})();
 </script>
 </body>
 </html>
