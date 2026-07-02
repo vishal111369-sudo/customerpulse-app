@@ -220,7 +220,7 @@ function renderAuth(mode){
     <label>Organisation</label><input id="obBiz" placeholder="e.g. Meridian Markets" oninput="obCheck()">
     <label>Domain</label><div class="verticals">${domainTiles()}</div>
     <label style="display:flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--text);cursor:pointer;margin-top:16px">
-      <input type="checkbox" id="obSandbox" ${obSandbox?'checked':''} onchange="obSandbox=this.checked" style="width:auto;accent-color:var(--accent)">
+      <input type="checkbox" id="obSandbox" ${obSandbox?'checked':''} onchange="obSandbox=this.checked;syncSandboxUI()" style="width:auto;accent-color:var(--accent)">
       Use Sandbox — explore this domain with seeded sample data (test workspace)</label>
     <div id="auMsg"></div>
     ${setup?
@@ -231,10 +231,16 @@ function renderAuth(mode){
       <div style="color:var(--muted);font-size:12px;margin-top:12px;text-align:center">Organisation &amp; domain are required to create an account. Data is isolated per organisation.</div>`}
   </div></div>`;
   $("#onboarding").style.display="block";
+  syncSandboxUI();
 }
 function selVertical(id){ obSel=id; document.querySelectorAll(".vopt").forEach(e=>e.classList.toggle("sel",e.dataset.id===id));
   const b=$("#obBiz"); if(b&&!b.value) b.placeholder=VERTICALS[id].placeholder; obCheck(); }
-function obCheck(){ const g=$("#obGo"); if(g) g.disabled=!(obSel && $("#obBiz").value.trim()); }
+function sandboxOn(){ return $("#obSandbox") ? $("#obSandbox").checked : !!obSandbox; }
+function syncSandboxUI(){ const b=$("#obBiz"), on=sandboxOn();
+  if(b){ b.disabled=on; b.style.opacity=on?"0.4":"1"; b.style.pointerEvents=on?"none":"auto";
+    if(on){ b.value=""; b.placeholder="Not applicable"; } else b.placeholder=(obSel&&VERTICALS[obSel])?VERTICALS[obSel].placeholder:"e.g. Meridian Markets"; }
+  obCheck(); }
+function obCheck(){ const g=$("#obGo"); if(g) g.disabled=!(obSel && (sandboxOn() || $("#obBiz").value.trim())); }
 function amsg(t,ok){ const e=$("#auMsg"); if(!e) return; e.textContent=t;
   e.style.cssText="margin-top:14px;font-size:13px;padding:9px 11px;border-radius:8px;"+(ok?"background:rgba(0,192,118,.12);color:var(--green)":"background:rgba(232,48,74,.14);color:var(--red)"); }
 
@@ -247,9 +253,11 @@ async function signIn(){
   USER=data.user; await afterAuth();
 }
 async function signUp(){
-  const email=$("#auEmail").value.trim(), pass=$("#auPass").value, biz=$("#obBiz").value.trim();
+  const email=$("#auEmail").value.trim(), pass=$("#auPass").value; let biz=$("#obBiz").value.trim();
   if(!email||!pass){ amsg("Enter your email and password.",false); return; }
-  if(!obSel||!biz){ amsg("Pick a domain and enter your organisation to create an account.",false); return; }
+  if(!obSel){ amsg("Pick a domain to create an account.",false); return; }
+  if(!biz && !sandboxOn()){ amsg("Enter your organisation (or tick Use Sandbox).",false); return; }
+  if(!biz) biz="Sandbox";
   amsg("Creating account…",true);
   const {data,error}=await SBC.auth.signUp({email,password:pass,options:{emailRedirectTo:location.origin,data:{vertical:obSel,business:biz}}});
   if(error){ amsg(error.message||error.msg||("Something went wrong ("+(error.status||error.code||"error")+"). Please try again."),false); return; }
@@ -262,13 +270,15 @@ async function afterAuth(){
   const formBiz=$("#obBiz")?$("#obBiz").value.trim():"";
   const vertical=(obSel&&VERTICALS[obSel])?obSel:(VERTICALS[md.vertical]?md.vertical:null);
   const business=formBiz||md.business;
-  if(vertical&&business){ await saveWorkspace(vertical,business); }
+  if(vertical && (business || sandboxOn())){ await saveWorkspace(vertical,business); }
   else renderAuth('setup');
 }
 async function saveWorkspace(vertical,business){
-  vertical=vertical||obSel; business=business||($("#obBiz")?$("#obBiz").value.trim():"");
-  if(!vertical||!VERTICALS[vertical]||!business){ amsg("Pick a domain and enter your organisation.",false); return; }
-  const sandbox = $("#obSandbox") ? $("#obSandbox").checked : !!obSandbox;
+  vertical=vertical||obSel;
+  const sandbox = sandboxOn();
+  business=business||($("#obBiz")?$("#obBiz").value.trim():"");
+  if(sandbox && !business) business="Sandbox";
+  if(!vertical||!VERTICALS[vertical]||!business){ amsg("Pick a domain, and enter your organisation (or tick Use Sandbox).",false); return; }
   SETUP={vertical,business,sandbox};
   localStorage.setItem("cp_setup",JSON.stringify(SETUP));
   try{ await SBC.auth.updateUser({data:{vertical,business}}); }catch(e){}
