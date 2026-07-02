@@ -104,6 +104,7 @@
     <div class="t" data-view="analyze">Add / Analyze</div>
   </div>
   <div class="navr">
+    <span id="modeChip" style="font-size:12px;font-weight:700"></span>
     <span class="chip" id="verticalChip"></span>
     <span class="chip" onclick="openSettings()">⚙ Settings</span>
   </div>
@@ -117,6 +118,8 @@
     <input id="setCsm" placeholder="e.g. Priya N.">
     <label>Gemini API key (stored only in this browser)</label>
     <input id="setKey" type="password" placeholder="AI…">
+    <label>Live data — CustomerPulse API key (optional)</label>
+    <input id="setApi" type="password" placeholder="cp_live_… (leave blank for demo data)">
     <label>Change industry / business</label>
     <button class="btn" style="margin-top:6px" onclick="reOnboard()">Re-run onboarding ↻</button>
     <div style="display:flex;gap:10px;margin-top:22px">
@@ -190,7 +193,14 @@ const RISK_KEYS=["health_score","risk_level","segment","nps"];
 let SETUP=JSON.parse(localStorage.getItem("cp_setup")||"null");
 let CSM=localStorage.getItem("cp_csm")||"";
 let GKEY=localStorage.getItem("cp_gemini_key")||"";
+let APIKEY=localStorage.getItem("cp_api_key")||"";
+const CP_API="https://sufuqnqmcvdrxnbfmpwh.supabase.co/functions/v1";
+const CP_ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1ZnVxbnFtY3ZkcnhuYmZtcHdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODYyNDcsImV4cCI6MjA5Njc2MjI0N30.QcCeSrYA0AD8tSslC3XjiLfRp-dkr_-DSBsDArTAz4E";
+let MODE="demo";
 let CUSTOMERS=[], CURRENT=null, obSel=null, PTAB="Overview", QUERY="";
+async function pullLive(){ if(!APIKEY) return null;
+  try{ const r=await fetch(CP_API+"/cp-pull",{method:"POST",headers:{"Authorization":"Bearer "+CP_ANON,"x-api-key":APIKEY,"Content-Type":"application/json"},body:"{}"});
+    const j=await r.json(); return (j&&Array.isArray(j.customers))?j:null; }catch(e){ return null; } }
 const $=s=>document.querySelector(s);
 function V(){ return VERTICALS[SETUP.vertical]; }
 function label(k){ return V().labels[k]||k; }
@@ -362,11 +372,12 @@ function saveNote(){ CURRENT.note=$("#noteBox").value; alert("Note saved."); }
 
 /* ============ CHARTS (canvas 2D, DPR-aware) ============ */
 function setupCanvas(cv){ const DPR=window.devicePixelRatio||1; const w=cv.clientWidth||520, h=cv.height;
-  cv.width=w*DPR; cv.height=h*DPR; const ctx=cv.getContext("2d"); ctx.scale(DPR,DPR); return {ctx,w,h}; }
+  cv.width=w*DPR; cv.height=h*DPR; const ctx=cv.getContext("2d"); if(!ctx) return null; ctx.scale(DPR,DPR); return {ctx,w,h}; }
 function drawCharts(){ const c=CURRENT; if(!c||!c.daily) return;
   const a=$("#chA"), b=$("#chB"); if(!a||!a.getContext) return;
+  if(!a.getContext("2d")) return;
   // A: cumulative net line + area
-  const {ctx,w,h}=setupCanvas(a); const nets=c.daily.map(d=>d.net);
+  const A=setupCanvas(a); if(!A) return; const {ctx,w,h}=A; const nets=c.daily.map(d=>d.net);
   const mn=Math.min(0,...nets), mx=Math.max(0,...nets), pad=8, span=(mx-mn)||1;
   const X=i=>pad+i*(w-2*pad)/(c.daily.length-1), Y=val=>h-pad-(val-mn)*(h-2*pad)/span;
   ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.beginPath(); ctx.moveTo(pad,Y(0)); ctx.lineTo(w-pad,Y(0)); ctx.stroke();
@@ -376,7 +387,7 @@ function drawCharts(){ const c=CURRENT; if(!c||!c.daily) return;
   ctx.beginPath(); c.daily.forEach((d,i)=>i?ctx.lineTo(X(i),Y(d.net)):ctx.moveTo(X(i),Y(d.net)));
   ctx.strokeStyle="#00c076"; ctx.lineWidth=2; ctx.stroke();
   // B: spend bars
-  const s=setupCanvas(b); const sp=c.daily.map(d=>d.spend), smx=Math.max(...sp)||1, bw=(s.w-16)/c.daily.length;
+  const s=setupCanvas(b); if(!s) return; const sp=c.daily.map(d=>d.spend), smx=Math.max(...sp)||1, bw=(s.w-16)/c.daily.length;
   c.daily.forEach((d,i)=>{ const bh=(d.spend/smx)*(s.h-16); s.ctx.fillStyle="rgba(79,141,255,.7)";
     s.ctx.fillRect(8+i*bw,s.h-8-bh,Math.max(1,bw-1.5),bh); });
 }
@@ -400,17 +411,24 @@ Recent transactions: ${JSON.stringify(c.transactions||[])}`;
 }
 
 /* ============ SETTINGS ============ */
-function openSettings(){ $("#setCsm").value=CSM; $("#setKey").value=GKEY; $("#settingsModal").classList.add("show"); }
+function openSettings(){ $("#setCsm").value=CSM; $("#setKey").value=GKEY; $("#setApi").value=APIKEY; $("#settingsModal").classList.add("show"); }
 function closeSettings(){ $("#settingsModal").classList.remove("show"); }
-function saveSettings(){ CSM=$("#setCsm").value.trim(); GKEY=$("#setKey").value.trim();
-  localStorage.setItem("cp_csm",CSM); localStorage.setItem("cp_gemini_key",GKEY); closeSettings(); }
+function saveSettings(){ CSM=$("#setCsm").value.trim(); GKEY=$("#setKey").value.trim(); const newApi=$("#setApi").value.trim();
+  localStorage.setItem("cp_csm",CSM); localStorage.setItem("cp_gemini_key",GKEY);
+  const changed=newApi!==APIKEY; APIKEY=newApi; localStorage.setItem("cp_api_key",APIKEY); closeSettings();
+  if(changed) boot(); }
 
 /* ============ BOOT ============ */
-function boot(){ const v=V();
+async function boot(){ const v=V();
   $("#nav").style.display="flex"; $("#app").style.display="block";
   $("#bizlabel").textContent="· "+SETUP.business; $("#verticalChip").textContent=v.icon+" "+v.label;
   document.querySelectorAll(".navtabs .t").forEach(t=>t.onclick=()=>showView(t.dataset.view));
-  const fromPlugin=loadFromParam(); CUSTOMERS=demoData();
+  const fromPlugin=loadFromParam();
+  const live=await pullLive();
+  if(live && live.customers.length){ MODE="live"; CUSTOMERS=live.customers.map(normalize); }
+  else { MODE="demo"; CUSTOMERS=demoData(); }
+  $("#modeChip").textContent = MODE==="live" ? "● Live" : "◦ Demo";
+  $("#modeChip").style.color = MODE==="live" ? "var(--green)" : "var(--text2)";
   if(fromPlugin){ CUSTOMERS.unshift(fromPlugin); CURRENT=fromPlugin; PTAB="Overview"; renderProfile(); }
   else showView("dashboard");
 }
