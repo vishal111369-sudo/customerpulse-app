@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CustomerPulse — Admin</title>
+<!--
+  CustomerPulse Admin — self-service org & API-key management.
+  Gated by an admin secret (stored only in this browser) checked server-side by the
+  cp-admin Edge Function (service-role). Issue keys, see usage, rotate, delete.
+  (c) 2026 Equibyte Technologies.
+-->
+<style>
+  :root{--bg:#0f1117;--surface:#161b27;--surface2:#1c2235;--surface3:#212840;--border:#252d42;--border2:#2e3854;
+    --text:#d4e0f5;--text2:#8fa8cc;--muted:#4a607a;--accent:#4f8dff;--green:#00c076;--red:#e8304a;--gold:#ffd740;
+    --purple:#b47fff;--radius:10px;--mono:'SF Mono','Fira Code','Courier New',monospace;
+    --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:1.5}
+  .mono{font-family:var(--mono)}
+  .nav{display:flex;align-items:center;justify-content:space-between;padding:12px 22px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px}
+  .brand .dot{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--purple));display:grid;place-items:center}
+  .brand small{font-weight:600;color:var(--gold);font-size:12px;margin-left:6px;letter-spacing:.5px}
+  .navr{color:var(--text2);font-size:13px;display:flex;gap:12px;align-items:center}
+  .chip{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:18px}
+  h2{font-size:17px;margin-bottom:4px} .sub{color:var(--text2);font-size:13px}
+  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin:14px 0 6px}
+  input,select{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:11px 13px;color:var(--text);font-size:14px;font-family:var(--font)}
+  .btn{background:var(--surface3);border:1px solid var(--border2);color:var(--text);border-radius:9px;padding:10px 16px;font-weight:600;cursor:pointer;font-size:13.5px}
+  .btn.p{background:var(--accent);color:#fff;border-color:var(--accent)} .btn.sm{padding:6px 11px;font-size:12.5px}
+  .btn.danger{color:var(--red);border-color:rgba(232,48,74,.4)}
+  .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);padding:10px 8px;border-bottom:1px solid var(--border)}
+  td{padding:11px 8px;border-bottom:1px solid var(--border);font-size:13.5px;vertical-align:middle}
+  .key{font-family:var(--mono);font-size:12.5px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:4px 8px;cursor:pointer}
+  .vpill{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px;background:var(--surface3);color:var(--text2)}
+  .msg{font-size:13px;padding:10px 12px;border-radius:8px;margin-top:12px;display:none}
+  .msg.ok{display:block;background:rgba(0,192,118,.12);color:var(--green)}
+  .msg.err{display:block;background:rgba(232,48,74,.12);color:var(--red)}
+  .gate{max-width:440px;margin:60px auto}
+  .newkey{background:rgba(0,192,118,.1);border:1px solid rgba(0,192,118,.35);border-radius:9px;padding:12px 14px;margin-top:14px;display:none}
+  .newkey.show{display:block}
+  .hint{color:var(--muted);font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="nav">
+  <div class="brand"><span class="dot">◉</span> CustomerPulse <small>ADMIN</small></div>
+  <div class="navr"><span id="whoami"></span><span class="chip" id="lockBtn" onclick="lock()" style="display:none">Lock</span></div>
+</div>
+
+<!-- GATE -->
+<div class="wrap" id="gate" style="display:none">
+  <div class="card gate">
+    <h2>Admin sign-in</h2>
+    <div class="sub">Enter the admin secret to manage organisations and API keys. It's stored only in this browser and verified server-side.</div>
+    <label>Admin secret</label>
+    <input id="secretInput" type="password" placeholder="cpadm_…" onkeydown="if(event.key==='Enter')unlock()">
+    <div style="margin-top:16px"><button class="btn p" onclick="unlock()">Unlock</button></div>
+    <div class="msg" id="gateMsg"></div>
+  </div>
+</div>
+
+<!-- CONSOLE -->
+<div class="wrap" id="console" style="display:none">
+  <div class="card">
+    <h2>Issue a new API key</h2>
+    <div class="sub">Create an organisation. Its key authenticates that org's data pushes and pulls.</div>
+    <div class="row" style="margin-top:8px">
+      <div style="flex:2;min-width:200px"><label>Business name</label><input id="orgName" placeholder="e.g. Acme Brokerage"></div>
+      <div style="flex:1;min-width:150px"><label>Vertical</label>
+        <select id="orgVertical">
+          <option value="b2b-saas">B2B SaaS</option>
+          <option value="retail">Retail / E-com</option>
+          <option value="finance">Finance / Trading</option>
+          <option value="sandbox">Sandbox</option>
+        </select></div>
+      <div><button class="btn p" onclick="createOrg()">Create org &amp; key</button></div>
+    </div>
+    <div class="newkey" id="newKey"></div>
+    <div class="msg" id="createMsg"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><h2>Organisations</h2><div class="sub" id="orgCount"></div></div>
+      <button class="btn sm" onclick="loadOrgs()">Refresh</button>
+    </div>
+    <table>
+      <thead><tr><th>Business</th><th>Vertical</th><th>API key</th><th>Customers</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead>
+      <tbody id="orgRows"></tbody>
+    </table>
+    <div class="msg" id="listMsg"></div>
+  </div>
+</div>
+
+<script>
+const CP_API="https://sufuqnqmcvdrxnbfmpwh.supabase.co/functions/v1";
+const CP_ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1ZnVxbnFtY3ZkcnhuYmZtcHdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODYyNDcsImV4cCI6MjA5Njc2MjI0N30.QcCeSrYA0AD8tSslC3XjiLfRp-dkr_-DSBsDArTAz4E";
+let SECRET=localStorage.getItem("cp_admin_secret")||"";
+const $=s=>document.querySelector(s);
+const VLABEL={"b2b-saas":"B2B SaaS","retail":"Retail / E-com","finance":"Finance / Trading","sandbox":"Sandbox"};
+
+async function api(action,extra){
+  const r=await fetch(CP_API+"/cp-admin",{method:"POST",
+    headers:{"Authorization":"Bearer "+CP_ANON,"x-admin-secret":SECRET,"Content-Type":"application/json"},
+    body:JSON.stringify({action,...(extra||{})})});
+  const j=await r.json(); return {status:r.status,...j};
+}
+function msg(el,text,ok){ const e=$(el); e.textContent=text; e.className="msg "+(ok?"ok":"err"); }
+
+async function unlock(){
+  SECRET=$("#secretInput").value.trim();
+  const r=await api("list_orgs");
+  if(r.status===403){ msg("#gateMsg","Invalid admin secret.",false); return; }
+  localStorage.setItem("cp_admin_secret",SECRET); showConsole(); renderOrgs(r.orgs||[]);
+}
+function lock(){ localStorage.removeItem("cp_admin_secret"); SECRET=""; location.reload(); }
+function showConsole(){ $("#gate").style.display="none"; $("#console").style.display="block";
+  $("#lockBtn").style.display="inline-block"; $("#whoami").textContent="Signed in"; }
+
+async function loadOrgs(){ const r=await api("list_orgs");
+  if(r.status===403){ lock(); return; }
+  if(r.error){ msg("#listMsg",r.error,false); return; } renderOrgs(r.orgs||[]); }
+function renderOrgs(orgs){
+  $("#orgCount").textContent=orgs.length+" organisation"+(orgs.length===1?"":"s");
+  $("#orgRows").innerHTML=orgs.map(o=>`<tr>
+    <td><b>${esc(o.name)}</b></td>
+    <td><span class="vpill">${VLABEL[o.vertical]||o.vertical}</span></td>
+    <td><span class="key" title="Click to copy" onclick="copyKey('${o.api_key}')">${o.api_key}</span></td>
+    <td>${o.customers ?? 0}</td>
+    <td class="mono" style="font-size:12px;color:var(--text2)">${(o.created_at||"").slice(0,10)}</td>
+    <td style="text-align:right;white-space:nowrap">
+      <button class="btn sm" onclick="rotate('${o.id}','${esc(o.name)}')">Rotate</button>
+      <button class="btn sm danger" onclick="del('${o.id}','${esc(o.name)}')">Delete</button>
+    </td></tr>`).join("")||`<tr><td colspan="6" style="color:var(--muted);padding:20px">No organisations yet.</td></tr>`;
+}
+function esc(s){ return String(s).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
+function copyKey(k){ navigator.clipboard?.writeText(k); }
+
+async function createOrg(){
+  const name=$("#orgName").value.trim(); const vertical=$("#orgVertical").value;
+  if(!name){ msg("#createMsg","Enter a business name.",false); return; }
+  const r=await api("create_org",{name,vertical});
+  if(r.error){ msg("#createMsg",r.error,false); return; }
+  $("#createMsg").className="msg";
+  const nk=$("#newKey"); nk.className="newkey show";
+  nk.innerHTML=`Key issued for <b>${esc(r.org.name)}</b> — copy it now:<br>
+    <span class="key" onclick="copyKey('${r.org.api_key}')" style="display:inline-block;margin-top:8px">${r.org.api_key}</span>
+    <div class="hint">Share this with the platform pushing data. You can rotate it anytime below.</div>`;
+  $("#orgName").value=""; loadOrgs();
+}
+async function rotate(id,name){ if(!confirm("Rotate the key for "+name+"? The old key stops working immediately.")) return;
+  const r=await api("rotate_key",{id});
+  if(r.error){ msg("#listMsg",r.error,false); return; }
+  const nk=$("#newKey"); nk.className="newkey show";
+  nk.innerHTML=`New key for <b>${esc(name)}</b>:<br><span class="key" onclick="copyKey('${r.org.api_key}')" style="display:inline-block;margin-top:8px">${r.org.api_key}</span>`;
+  loadOrgs();
+}
+async function del(id,name){ if(!confirm("Delete "+name+"? This permanently removes the org AND all its ingested customers/transactions. This cannot be undone.")) return;
+  const r=await api("delete_org",{id});
+  if(r.error){ msg("#listMsg",r.error,false); return; } loadOrgs();
+}
+
+// boot
+(async()=>{ if(SECRET){ const r=await api("list_orgs"); if(r.status===403){ SECRET=""; localStorage.removeItem("cp_admin_secret"); $("#gate").style.display="block"; }
+  else { showConsole(); renderOrgs(r.orgs||[]); } } else { $("#gate").style.display="block"; } })();
+</script>
+</body>
+</html>
